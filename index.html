@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#3b9be6">
+<title>ブルーマーチ</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="stage">
+  <canvas id="c"></canvas>
+
+  <div id="hud">
+    <div class="pill blue" id="hudArmy">
+      <svg class="ico" viewBox="0 0 32 32" aria-hidden="true">
+        <path d="M6 16a10 10 0 0 1 20 0v3H6z" fill="#2f7df0" stroke="#0e3a8c" stroke-width="2"/>
+        <rect x="4" y="17" width="24" height="4" rx="2" fill="#0e3a8c"/>
+        <path d="M11 11q3-5 8-3" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round" opacity=".7"/>
+        <rect x="12" y="21" width="8" height="6" rx="2" fill="#f1c9a0" stroke="#0e3a8c" stroke-width="1.5"/>
+      </svg>
+      <b id="armyNum">10</b>
+    </div>
+    <div class="pill gold">
+      <span class="coin"></span>
+      <b id="coinNum">0</b>
+    </div>
+    <div class="pill stg"><b id="stageNum">STAGE 1</b></div>
+  </div>
+
+  <div id="hint">◀ スワイプで左右に移動 ▶</div>
+
+  <!-- タイトル -->
+  <div class="overlay" id="title">
+    <div class="panel">
+      <div class="logo">ブルー<span>マーチ</span></div>
+      <div class="sub">青い軍隊を育てて、赤い軍を打ち破れ！</div>
+
+      <div class="stagesel">
+        <button class="arrow" id="stPrev" aria-label="前のステージ">◀</button>
+        <div class="stname" id="stName">ステージ 1</div>
+        <button class="arrow" id="stNext" aria-label="次のステージ">▶</button>
+      </div>
+
+      <button class="btn green big" id="btnStart">スタート</button>
+
+      <div class="upgrade">
+        <div class="uptext">
+          <b>初期兵士を強化</b>
+          <span id="upInfo">兵士 10人 → 11人</span>
+        </div>
+        <button class="btn gold" id="btnUpgrade"><span class="coin"></span><span id="upCost">40</span></button>
+      </div>
+
+      <ul class="howto">
+        <li>画面を左右にスワイプして軍隊を動かす</li>
+        <li>青いゲートをくぐって兵士を増やす</li>
+        <li>敵軍を全滅させてゴールを目指そう</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- クリア -->
+  <div class="overlay hidden" id="clear">
+    <div class="panel">
+      <div class="banner win">ステージクリア！</div>
+      <div class="result">
+        <div>残った兵士 <b id="clArmy">0</b> 人</div>
+        <div class="reward"><span class="coin"></span> 報酬 <b id="clReward">0</b></div>
+      </div>
+      <button class="btn green big" id="btnNext">つぎのステージへ</button>
+      <button class="btn plain" id="btnReplay">もう一度あそぶ</button>
+      <button class="btn plain" id="btnClearTitle">タイトルへ</button>
+    </div>
+  </div>
+
+  <!-- ゲームオーバー -->
+  <div class="overlay hidden" id="over">
+    <div class="panel">
+      <div class="banner lose">全滅…</div>
+      <div class="result">
+        <div id="ovStage">ステージ 1</div>
+        <div class="tip">ゲートは数字の大きいほうを選ぼう！</div>
+      </div>
+      <button class="btn green big" id="btnRetry">リトライ</button>
+      <button class="btn plain" id="btnOverTitle">タイトルへ</button>
+    </div>
+  </div>
+</div>
+<script src="game.js"></script>
+</body>
+</html>
