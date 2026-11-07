@@ -45,6 +45,8 @@ body { position: fixed; inset: 0; }
   z-index: 5;
 }
 #hudTop { display: flex; align-items: center; gap: 8px; }
+#prog { height: 7px; margin-top: 7px; border-radius: 99px; background: rgba(10,30,70,.45); border: 1.5px solid rgba(255,255,255,.55); overflow: hidden; }
+#prog i { display: block; height: 100%; width: 0; background: linear-gradient(#ffe27a, #f5a300); border-radius: 99px; }
 #typeRow { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
 .tchip {
   display: flex; align-items: center; gap: 2px;

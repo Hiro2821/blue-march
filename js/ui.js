@@ -24,6 +24,8 @@ function updateHud() {
   if (S.coins !== hud.coins) { hud.coins = S.coins; el.coinNum.textContent = BM.fmt(S.coins); }
   // 兵種ごとの人数
   const a = w.army;
+  const pg = Math.round(BM.clamp(a.z / w.endZ, 0, 1) * 100);
+  if (pg !== hud.prog) { hud.prog = pg; el.progFill.style.width = pg + '%'; }
   const key = a.n.map((v) => Math.ceil(v - 1e-6)).join(',') + '|' + TYPES.map((t) => (S.unlock[t] ? 1 : 0)).join('');
   if (key !== hud.types) {
     hud.types = key;
@@ -140,7 +142,7 @@ BM.hooks.over = function (info) {
 
 // ------------------------------------------------------------------ 起動
 UI.boot = function () {
-  for (const id of ['stage', 'c', 'hud', 'hint', 'armyNum', 'coinNum', 'stageNum', 'typeRow', 'buffRow',
+  for (const id of ['stage', 'c', 'hud', 'hint', 'armyNum', 'coinNum', 'stageNum', 'typeRow', 'buffRow', 'progFill',
     'title', 'pick', 'clear', 'over', 'stName', 'stPrev', 'stNext', 'btnStart', 'titleCoins', 'roster', 'pickList',
     'clArmy', 'clReward', 'clDetail', 'ovStage', 'btnNext', 'btnReplay', 'btnClearTitle', 'btnRetry', 'btnOverTitle']) el[id] = $(id);
   BM.loadSave();

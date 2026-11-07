@@ -28,7 +28,7 @@ function makeGroup(z, Sv, rnd, o) {
     boss: o.bossHP > 0 ? { hp: o.bossHP, max: o.bossHP, hurt: 0, kind: o.kind || 0, pulseT: 1.5 } : null,
     active: false, dead: false, skipped: false,
     lane: o.lane === undefined ? -1 : o.lane,
-    elite: !!o.elite,
+    elite: !!o.elite, reward: o.reward || null,
     seed: Math.floor(rnd() * 1000),
     depth0: (Math.ceil(vn / cols) - 1) * C.ESPZ,
   };
@@ -85,6 +85,45 @@ function makeRow(A, stage, rnd, avail) {
 // 難易度: 最後に待つ敵の強さ（最良ルートで進んだ場合の兵数に対する比率）
 BM.finalRatio = (stage) => 0.7 + 0.1 * stage;
 
+
+// ---- 分岐ルート: 左右の道で得られるものが違う
+BM.ROUTE = {
+  army:  { name: '兵士ルート',   sub: '兵士がぐんぐん増える', col: '#2f7df0', col2: '#58b8ff', tint: 'rgba(60,140,255,0.20)' },
+  coin:  { name: 'コインルート', sub: 'コインがたくさん',     col: '#e29a00', col2: '#ffd23f', tint: 'rgba(255,200,40,0.22)' },
+  elite: { name: '強敵ルート',   sub: '倒すと強化＋コイン',   col: '#c42a22', col2: '#ff7a6e', tint: 'rgba(255,70,50,0.18)' },
+};
+const LANE_X = 3.05;
+BM.laneX = (lane) => (lane === 0 ? -LANE_X : LANE_X);
+
+function buildFork(zf, L, A, stage, rnd, gates, groups, coins) {
+  const kinds = stage >= 3 ? ['army', 'coin', 'elite'] : ['army', 'coin'];
+  const a = kinds.splice(Math.floor(rnd() * kinds.length), 1)[0];
+  const b = kinds[Math.floor(rnd() * kinds.length)];
+  const routes = rnd() < 0.5 ? [a, b] : [b, a];
+  let best = 0;
+  routes.forEach((kind, lane) => {
+    let est = A;
+    if (kind === 'army') {
+      const v1 = nice(A * 0.3);
+      const v2 = nice((A + v1) * 0.25);
+      for (const [dz, v] of [[12, v1], [28, v2]]) {
+        gates.push({ z: zf + dz, opts: [{ t: 'add', v }], lane, single: true, used: false, side: 0, flash: 0, skipped: false });
+      }
+      est = A + v1 + v2;
+    } else if (kind === 'coin') {
+      const v = 10 + 3 * stage;
+      for (let k = 0; k < 6; k++) coins.push({ z: zf + 8 + k * 6, lane, v, got: false });
+    } else {
+      const nE = Math.max(3, Math.round(A * 0.25));
+      const g = makeGroup(zf + 24, nE * 3, rnd, { k: 3, cols: 6, x: BM.laneX(lane), lane, elite: true, reward: { coins: 80 + 25 * stage, pick: true } });
+      groups.push(g);
+      est = Math.sqrt(Math.max(1, A * A - (C.DPS_E / C.DPS_A) * g.S * g.S));
+    }
+    best = Math.max(best, est);
+  });
+  return { fork: { z: zf, zEnd: zf + L, routes, chosen: -1 }, next: best };
+}
+
 BM.genStage = function (stage, seed) {
   const S = BM.S;
   const rnd = BM.rng(seed);
@@ -97,8 +136,20 @@ BM.genStage = function (stage, seed) {
   for (let p = 1; p <= nPick; p++) pickAfter.add(Math.max(1, Math.min(rows - 1, Math.round(rows * p / (nPick + 1)))));
   const avail = BM.TYPES.filter((t) => t !== 'sword' && S.unlock[t]);
 
+  // 分岐は2面目から。敵の中間部隊とは別の段に置く
+  let forkAfter = -1;
+  if (stage >= 2) {
+    let bd = 99;
+    for (let i = 2; i < rows; i++) {
+      if (midAfter.has(i)) continue;
+      const d = Math.abs(i - rows * 0.5);
+      if (d < bd) { bd = d; forkAfter = i; }
+    }
+  }
+
   let A = 10;
-  const gates = [], groups = [], picks = [];
+  let fork = null;
+  const gates = [], groups = [], picks = [], coins = [];
   let z = 24, lastGateZ = z;
   for (let i = 1; i <= rows; i++) {
     const row = makeRow(A, stage, rnd, avail);
@@ -116,16 +167,24 @@ BM.genStage = function (stage, seed) {
       A = Math.sqrt(Math.max(1, A * A - (C.DPS_E / C.DPS_A) * E * E));
       z = gz + g.depth0 + 10;
     }
+    if (i === forkAfter) {
+      const zf = lastGateZ + 22, L = 42;
+      const r = buildFork(zf, L, A, stage, rnd, gates, groups, coins);
+      fork = r.fork;
+      A = r.next;
+      z = zf + L + 14;
+    }
   }
   // 最後はボス + 取り巻き
   const fz = lastGateZ + 32;
+  groups.sort((p, q) => p.z - q.z);
   const E = Math.max(8, Math.round(A * BM.finalRatio(stage)));
   const esc = Math.round(E * 0.45);
   const kind = BM.bossKind(stage);
   const fg = makeGroup(fz, esc, rnd, { bossHP: E - esc, kind });
   groups.push(fg);
   return {
-    gates, groups, picks, endZ: fz + fg.depth0 + 14,
+    gates, groups, picks, coins, fork, endZ: fz + fg.depth0 + 14,
     bossKind: kind, designA: A, bossE: E,
   };
 };

@@ -3,6 +3,7 @@
 'use strict';
 const C = BM.C, S = BM.S, TYPE = BM.TYPE, TYPES = BM.TYPES;
 const clamp = BM.clamp, lerp = BM.lerp, hash = BM.hash;
+const FONT_JP = '"Hiragino Maru Gothic ProN","Hiragino Sans","Yu Gothic","Noto Sans JP",system-ui,sans-serif';
 const FONT_NUM = '"Arial Black","Hiragino Sans",Impact,system-ui,sans-serif';
 const BOSS_DPS = 0.5;               // ボスの攻撃力係数（体力あたり）
 const SCALE = [1.15, 1.1, 1.4, 1.2]; // 兵種ごとの表示サイズ
@@ -170,11 +171,11 @@ function newWorld(stage, state, seed) {
   };
   G.run = {
     stage, coinsRaw: 0, buff: { atk: 0, hp: 0, aspd: 0, coin: 0, move: 0 },
-    picked: [], kills: 0, gates: 0, startArmy: count(a), maxArmy: count(a), bossKilled: false,
+    picked: [], routes: [], kills: 0, gates: 0, startArmy: count(a), maxArmy: count(a), bossKilled: false,
   };
   G.world = {
     stage, ...gen, army: a, parts: [], proj: [], acc: { arrow: 0, orb: 0, slash: 0 },
-    t: 0, readyT: 0.6, finishT: 0, dyingT: 0, glow: 0, shake: 0, fightT: 0, hintOn: false,
+    t: 0, readyT: 0.6, finishT: 0, dyingT: 0, glow: 0, shake: 0, fightT: 0, hintOn: false, intro: null,
   };
   a.sp = spFor(count(a));
   syncArmy(a, 0);
@@ -209,6 +210,17 @@ function addPuff(x, z, color, n) {
     });
   }
 }
+function addCoinBurst(x, z, n) {
+  const w = G.world;
+  for (let i = 0; i < n; i++) {
+    if (w.parts.length > 280) return;
+    w.parts.push({
+      k: 'c', x: x + (Math.random() - 0.5) * 1.4, y: 1 + Math.random(), z: z + (Math.random() - 0.5) * 1.4,
+      vx: (Math.random() - 0.5) * 6, vy: 5 + Math.random() * 5, vz: (Math.random() - 0.5) * 6,
+      t: 0, life: 1.1 + Math.random() * 0.4,
+    });
+  }
+}
 function addRing(x, z, color, r) {
   if (G.world.parts.length > 260) return;
   G.world.parts.push({ k: 'r', x, y: 0.1, z, t: 0, life: 0.5, color, r });
@@ -237,11 +249,42 @@ function syncGroup(g) {
 }
 
 function curGroup(w) {
+  const fk = w.fork;
   for (let i = 0; i < w.groups.length; i++) {
     const g = w.groups[i];
-    if (!g.dead && !g.skipped) return g;
+    if (g.dead || g.skipped) continue;
+    if (g.lane >= 0 && (!fk || fk.chosen !== g.lane)) continue;   // 選んでいない道の敵は相手にしない
+    return g;
   }
   return null;
+}
+
+// 分岐の入口を通った位置(左右)で進む道が決まる
+function chooseRoute(w, lane) {
+  const fk = w.fork, run = G.run;
+  fk.chosen = lane;
+  const kind = fk.routes[lane];
+  for (const gt of w.gates) if (gt.lane >= 0 && gt.lane !== lane) { gt.used = true; gt.skipped = true; }
+  for (const g of w.groups) if (g.lane >= 0 && g.lane !== lane) g.skipped = true;
+  for (const c of w.coins) if (c.lane !== lane) c.got = true;
+  run.routes.push(kind);
+  S.stats.routes[kind]++;
+  const R = BM.ROUTE[kind];
+  addText(w.army.x, 3.2, w.army.z + 2, R.name, '#ffffff', 30, R.col);
+  BM.hooks.event('route', { kind });
+}
+
+// 敵の攻撃を兵種ごとの被弾しやすさ・体力に応じて配分する
+function hurtArmy(a, dE) {
+  let Wt = 0;
+  for (const t of TYPES) Wt += a.n[TYPE[t].idx] * TYPE[t].w;
+  if (Wt <= 0) return;
+  const hm = hpM();
+  for (const t of TYPES) {
+    const T = TYPE[t];
+    const share = a.n[T.idx] * T.w / Wt;
+    a.n[T.idx] = Math.max(0, a.n[T.idx] - dE * share / (T.hp * hm));
+  }
 }
 
 function reachRange(a) {
@@ -314,9 +357,14 @@ function update(dt) {
   }
   const rx = Math.min(Math.sqrt(Math.max(a.vn, 1)) * a.sp, 3.0) + 0.3;
   a.lim = Math.max(0.8, C.ROAD_HALF - 0.4 - rx);
-  a.tx = clamp(a.tx, -a.lim, a.lim);
+  let lo = -a.lim, hi = a.lim;
+  const fk = w.fork;
+  if (fk && fk.chosen >= 0 && a.z >= fk.z - 1 && a.z <= fk.zEnd + 2) {
+    const c = BM.laneX(fk.chosen), hw = Math.max(0.25, 2.3 - 0.45 * rx);
+    lo = c - hw; hi = c + hw;
+  }
+  a.tx = clamp(a.tx, lo, hi);
   a.x += (a.tx - a.x) * Math.min(1, dt * 14);
-  a.x = clamp(a.x, -a.lim, a.lim);
 
   if (G.state === 'ready') {
     w.readyT -= dt;
@@ -339,6 +387,15 @@ function update(dt) {
     if (!fighting && !atGoal) {
       a.z += C.SPEED * moveM() * dt;
       if (a.z > 8) w.hintOn = false;
+    }
+
+    if (fk && fk.chosen < 0 && a.z >= fk.z) chooseRoute(w, a.x < 0 ? 0 : 1);
+
+    // ボス登場演出
+    if (g && g.boss && g.boss.hp > 0 && g.active && !g.introDone) {
+      g.introDone = true;
+      w.intro = { t: 0, kind: g.boss.kind };
+      w.shake = 0.8;
     }
 
     // ゲート通過
@@ -367,6 +424,15 @@ function update(dt) {
       BM.hooks.event('gate', { opt, diff });
     }
 
+    // コインルートのコイン
+    for (const c of w.coins) {
+      if (c.got || a.z < c.z) continue;
+      c.got = true;
+      run.coinsRaw += c.v;
+      addText(BM.laneX(c.lane), 2.0, c.z, '+' + Math.round(c.v * coinM()), '#ffe14a', 34);
+      addCoinBurst(BM.laneX(c.lane), c.z, 5);
+    }
+
     // 強化選択マーカー
     for (const pk of w.picks) {
       if (!pk.used && a.z >= pk.z) {
@@ -392,6 +458,7 @@ function update(dt) {
   }
 
   // 演出
+  if (w.intro) { w.intro.t += dt; if (w.intro.t > 2.4) w.intro = null; }
   for (const gr of w.groups) if (!gr.dead && gr.boss && gr.boss.hurt > 0) gr.boss.hurt -= dt;
   for (let i = w.proj.length - 1; i >= 0; i--) {
     const p = w.proj[i];
@@ -409,10 +476,42 @@ function update(dt) {
     const p = w.parts[i];
     p.t += dt;
     if (p.k === 'p') { p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; p.vy -= 4 * dt; if (p.y < 0.1) p.y = 0.1; }
+    else if (p.k === 'c') {
+      p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; p.vy -= 14 * dt;
+      if (p.y < 0.3) { p.y = 0.3; p.vy = -p.vy * 0.45; }
+    }
     if (p.t >= p.life) { w.parts[i] = w.parts[w.parts.length - 1]; w.parts.pop(); }
   }
   syncArmy(a, dt);
   for (const gr of w.groups) if (!gr.dead || gr.vn > 0) syncGroup(gr);
+}
+
+// ボスの種類ごとに違う攻撃演出
+function bossPulse(w, a, g) {
+  const kind = g.boss.kind, fx = BM.BOSS[kind].fx;
+  w.shake = Math.max(w.shake, 0.7);
+  hurtArmy(a, g.boss.hp * C.DPS_E * BOSS_DPS * 1.2);
+  if (kind === 0) {            // 鬼将軍: 地面を叩いて衝撃波
+    addRing(a.x, a.z + 2, fx, 6); addRing(a.x, a.z + 2, '#ffffff', 9);
+    addPuff(a.x, a.z + 2, '#ffd0a0', 8);
+  } else if (kind === 1) {     // 岩巨人: 岩が降ってくる
+    for (let i = 0; i < 12 && w.parts.length < 260; i++) {
+      w.parts.push({ k: 'p', x: a.x + (Math.random() - 0.5) * 8, y: 9 + Math.random() * 4, z: a.z + (Math.random() - 0.5) * 6,
+        vx: 0, vy: -14, vz: 0, t: 0, life: 0.7, color: i & 1 ? '#8f939c' : '#b9a27a' });
+    }
+    addRing(a.x, a.z + 1, fx, 7);
+  } else if (kind === 2) {     // 魔導士: 魔法弾を乱れ撃ち
+    for (let i = 0; i < 5; i++) {
+      w.proj.push({ k: 'orb', sx: g.x, sz: g.z + 1, tx: a.x + (Math.random() - 0.5) * 6, tz: a.z + (Math.random() - 0.5) * 3, t: 0, dur: 0.6 + i * 0.08, h: 5 });
+    }
+  } else if (kind === 3) {     // 炎の巨人: 炎の波
+    for (let i = 0; i < 9; i++) addPuff(-5.2 + i * 1.3, a.z + 3 + Math.random() * 2, i & 1 ? '#ffb13a' : '#ff6a2a', 3);
+    addRing(a.x, a.z + 2, fx, 8);
+  } else {                     // 氷王: 吹雪
+    for (let i = 0; i < 10; i++) addPuff(a.x + (Math.random() - 0.5) * 9, a.z + (Math.random() - 0.5) * 5, i & 1 ? '#ffffff' : '#bfeaff', 2);
+    addRing(a.x, a.z + 2, fx, 7);
+  }
+  addText(a.x, 3.4, a.z, '!!', fx, 36, '#3a0a06');
 }
 
 // 兵種ごとの戦闘処理
@@ -441,21 +540,21 @@ function fight(w, a, g, dt) {
   if (gap <= C.CONTACT + 0.6) {
     const bossHp = g.boss ? g.boss.hp : 0;
     const dE = (g.S * C.DPS_E + bossHp * C.DPS_E * BOSS_DPS) * dt;
-    let Wt = 0;
-    for (const t of TYPES) Wt += a.n[TYPE[t].idx] * TYPE[t].w;
-    if (Wt > 0) {
-      const hm = hpM();
-      for (const t of TYPES) {
-        const T = TYPE[t];
-        const share = a.n[T.idx] * T.w / Wt;
-        a.n[T.idx] = Math.max(0, a.n[T.idx] - dE * share / (T.hp * hm));
-      }
-    }
+    hurtArmy(a, dE);
     // 近接の火花
     w.acc.slash += dt * 22;
     while (w.acc.slash >= 1) {
       w.acc.slash -= 1;
       addSpark(a.x + (Math.random() - 0.5) * 5, 0.8 + Math.random(), a.z + C.CONTACT * (0.5 + Math.random() * 0.5), '#ffffff');
+    }
+  }
+
+  // ボス固有の攻撃演出（ダメージも少し上乗せ）
+  if (bossAlive && gap <= 30) {
+    g.boss.pulseT -= dt;
+    if (g.boss.pulseT <= 0) {
+      g.boss.pulseT = 3.2;
+      bossPulse(w, a, g);
     }
   }
 
@@ -494,8 +593,20 @@ function fight(w, a, g, dt) {
       addPuff(g.x + (Math.random() - 0.5) * 9, g.z + Math.random() * Math.max(2, g.depth0), k & 1 ? '#ff8a7a' : '#fff0a0', 2);
     }
     addText(g.x, 3, g.z, g.boss ? 'BOSS DOWN!' : 'DOWN!', '#ffffff', 34);
+    if (g.boss) {
+      w.shake = 1;
+      addCoinBurst(g.x, g.z + 2, 22);
+      addRing(g.x, g.z + 2, BM.BOSS[g.boss.kind].fx, 6);
+      addRing(g.x, g.z + 2, '#ffffff', 9);
+    }
+    if (g.reward) {
+      run.coinsRaw += g.reward.coins;
+      addText(g.x, 4.4, g.z, '+' + Math.round(g.reward.coins * coinM()), '#ffe14a', 38);
+      addCoinBurst(g.x, g.z + 1, 14);
+    }
     w.proj.length = 0;
     BM.hooks.event(g.boss ? 'boss' : 'group', { stage: w.stage });
+    if (g.reward && g.reward.pick) offerPick('reward');
   }
   if (total(a) <= 0.0001) {
     a.n.fill(0);
@@ -619,8 +730,8 @@ function drawWalls() {
   }
 }
 
-function outlineText(str, x, y, size, fill, stroke, lw) {
-  ctx.font = '900 ' + Math.round(size) + 'px ' + FONT_NUM;
+function outlineText(str, x, y, size, fill, stroke, lw, font) {
+  ctx.font = '900 ' + Math.round(size) + 'px ' + (font || FONT_NUM);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.lineJoin = 'round';
@@ -672,7 +783,10 @@ function drawGate(gt) {
     if (wpx < 4 || hpx < 2) continue;
     const used = gt.used;
     const chosen = used && gt.side === side;
-    ctx.globalAlpha = used && !chosen ? 0.45 : 1;
+    // 通過後は軍隊の後ろで薄くなって消える
+    const behind = used ? clamp((G.world.army.z - gt.z) / 5, 0, 1) : 0;
+    if (behind >= 1) continue;
+    ctx.globalAlpha = (used && !chosen ? 0.45 : 1) * (1 - behind);
     ctx.fillStyle = '#7a7f8a';
     ctx.fillRect(X1 + wpx * 0.06, Yb - hpx * 0.06, wpx * 0.1, hpx * 0.1);
     ctx.fillRect(X2 - wpx * 0.16, Yb - hpx * 0.06, wpx * 0.1, hpx * 0.1);
@@ -725,6 +839,105 @@ function drawPost(x, yb, yt, s) {
   ctx.fillRect(x - w / 2, yt, w * 0.3, yb - yt);
   ctx.fillStyle = '#6b7280';
   ctx.fillRect(x - w * 0.7, yt - w * 0.5, w * 1.4, w * 0.9);
+}
+
+// 分岐ルート: 道の色分け・中央の仕切り壁・案内看板
+function drawFork() {
+  const w = G.world, fk = w.fork;
+  if (!fk) return;
+  const z0 = Math.max(fk.z, cam.z - 4), z1 = Math.min(fk.zEnd, cam.z + C.VIEW_DIST);
+  if (z1 <= z0) return;
+  const R = C.ROAD_HALF;
+  for (let lane = 0; lane < 2; lane++) {
+    const xa = lane === 0 ? -R + 0.05 : 0.45, xb = lane === 0 ? -0.45 : R - 0.05;
+    if (!proj(xa, 0, z0)) continue; const p0x = PX, p0y = PY;
+    if (!proj(xb, 0, z0)) continue; const p1x = PX, p1y = PY;
+    if (!proj(xb, 0, z1)) continue; const p2x = PX, p2y = PY;
+    if (!proj(xa, 0, z1)) continue; const p3x = PX, p3y = PY;
+    ctx.fillStyle = BM.ROUTE[fk.routes[lane]].tint;
+    quad(p0x, p0y, p1x, p1y, p2x, p2y, p3x, p3y);
+    ctx.fill();
+  }
+  // 仕切り壁
+  const hw = 0.4, wh = 0.9;
+  for (const xs of [-hw, hw]) {
+    if (!proj(xs, 0, z0)) continue; const a0x = PX, a0y = PY;
+    proj(xs, wh, z0); const b0x = PX, b0y = PY;
+    proj(xs, wh, z1); const b1x = PX, b1y = PY;
+    proj(xs, 0, z1); const a1x = PX, a1y = PY;
+    ctx.fillStyle = xs < 0 ? '#b7a283' : '#a8936f';
+    quad(a0x, a0y, b0x, b0y, b1x, b1y, a1x, a1y);
+    ctx.fill();
+  }
+  if (proj(-hw, wh, z0)) {
+    const t0x = PX, t0y = PY;
+    proj(hw, wh, z0); const u0x = PX, u0y = PY;
+    proj(hw, wh, z1); const u1x = PX, u1y = PY;
+    proj(-hw, wh, z1); const t1x = PX, t1y = PY;
+    ctx.fillStyle = '#efe0c0';
+    quad(t0x, t0y, u0x, u0y, u1x, u1y, t1x, t1y);
+    ctx.fill();
+  }
+  // 入口の柱
+  if (fk.z >= cam.z && proj(-hw, 0, fk.z)) {
+    const xa = PX, ya = PY, s2 = PS;
+    proj(hw, 0, fk.z); const xb = PX;
+    proj(-hw, 1.8, fk.z); const yt = PY;
+    ctx.fillStyle = '#d3bf9b';
+    ctx.fillRect(xa, yt, xb - xa, ya - yt);
+    ctx.strokeStyle = 'rgba(110,88,60,0.6)'; ctx.lineWidth = 1.5;
+    ctx.strokeRect(xa, yt, xb - xa, ya - yt);
+  }
+}
+
+function drawRouteSign(fk, lane) {
+  const w = G.world;
+  const kind = fk.routes[lane], Rt = BM.ROUTE[kind];
+  const c = BM.laneX(lane), xl = c - 2.6, xr = c + 2.6, z = fk.z - 3;
+  if (!proj(xl, 2.0, z)) return;
+  const X1 = PX, Yb = PY, s = PS;
+  proj(xr, 2.0, z); const X2 = PX;
+  proj(xl, 4.6, z); const Yt = PY;
+  const wpx = X2 - X1, hpx = Yb - Yt;
+  if (wpx < 8) return;
+  const dim = fk.chosen >= 0 && fk.chosen !== lane;
+  ctx.globalAlpha = dim ? 0.4 : 1;
+  // 脚
+  ctx.fillStyle = '#7a7f8a';
+  const pw = Math.max(3, s * 0.3);
+  if (proj(xl + 0.25, 0, z)) { const yy = PY; ctx.fillRect(X1 + wpx * 0.06 - pw / 2, Yt + hpx, pw, yy - Yt - hpx); }
+  if (proj(xr - 0.25, 0, z)) { const yy = PY; ctx.fillRect(X2 - wpx * 0.06 - pw / 2, Yt + hpx, pw, yy - Yt - hpx); }
+  const g = ctx.createLinearGradient(0, Yt, 0, Yb);
+  g.addColorStop(0, Rt.col2); g.addColorStop(1, Rt.col);
+  BM.rrect(ctx, X1, Yt, wpx, hpx, Math.min(12, hpx * 0.16));
+  ctx.fillStyle = g; ctx.fill();
+  ctx.lineWidth = Math.max(2.5, s * 0.1); ctx.strokeStyle = '#ffffff'; ctx.stroke();
+  const nm = Math.min(hpx * 0.34, wpx / (Rt.name.length * 1.05));
+  outlineText(Rt.name, (X1 + X2) / 2, Yt + hpx * 0.36, nm, '#fff', 'rgba(0,0,0,0.5)', Math.max(3, nm * 0.18), FONT_JP);
+  const sb = Math.min(hpx * 0.2, wpx / (Rt.sub.length * 1.1));
+  outlineText(Rt.sub, (X1 + X2) / 2, Yt + hpx * 0.74, sb, '#fffbe0', 'rgba(0,0,0,0.5)', Math.max(2, sb * 0.16), FONT_JP);
+  ctx.globalAlpha = 1;
+}
+
+function drawCoinItem(c) {
+  if (c.got) return;
+  const t = G.world.t;
+  const cxw = BM.laneX(c.lane);
+  for (let k = -1; k <= 1; k++) {
+    const bob = Math.sin(t * 4 + c.z + k) * 0.12;
+    if (!proj(cxw + k * 1.3, 0.7 + bob, c.z)) continue;
+    const r = PS * 0.42;
+    ctx.fillStyle = 'rgba(40,30,10,0.25)';
+    ctx.beginPath(); ctx.ellipse(PX, PY + r * 1.1 + bob * PS, r * 0.9, r * 0.35, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#e59a00';
+    ctx.beginPath(); ctx.arc(PX, PY, r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ffd133';
+    ctx.beginPath(); ctx.arc(PX, PY, r * 0.82, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(179,107,0,0.6)'; ctx.lineWidth = Math.max(1, r * 0.14);
+    ctx.beginPath(); ctx.arc(PX, PY, r * 0.5, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.beginPath(); ctx.ellipse(PX - r * 0.3, PY - r * 0.35, r * 0.22, r * 0.12, -0.6, 0, Math.PI * 2); ctx.fill();
+  }
 }
 
 // 強化選択のアーチ（金色）
@@ -914,6 +1127,14 @@ function drawParts() {
       ctx.moveTo(PX - sz * 0.6, PY + sz * 0.6); ctx.lineTo(PX + sz * 0.6, PY - sz * 0.6);
       ctx.stroke();
       ctx.globalAlpha = 1;
+    } else if (p.k === 'c') {
+      if (!proj(p.x, p.y, p.z)) continue;
+      const r = PS * 0.3;
+      ctx.globalAlpha = clamp((1 - f) * 2, 0, 1);
+      ctx.fillStyle = '#b36b00'; ctx.beginPath(); ctx.arc(PX, PY, r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ffd133'; ctx.beginPath(); ctx.arc(PX, PY, r * 0.8, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.beginPath(); ctx.arc(PX - r * 0.25, PY - r * 0.25, r * 0.22, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
     } else if (p.k === 'r') {
       if (!proj(p.x, p.y, p.z)) continue;
       const rr = PS * p.r * (0.3 + f * 0.9);
@@ -952,7 +1173,7 @@ function drawLabels() {
         BM.rrect(ctx, PX - bw / 2 + 2, by - bh / 2 + 2, Math.max(bh - 4, (bw - 4) * fr), bh - 4, (bh - 4) / 2);
         ctx.fillStyle = '#ff4a3a'; ctx.fill();
       }
-      outlineText('BOSS ' + BM.fmt(Math.ceil(g.boss.hp)), PX, by + bh * 1.35, clamp(PS * 0.42, 12, 20), '#fff', '#3a0a06', 4);
+      outlineText(BM.BOSS[g.boss.kind].short + '  ' + BM.fmt(Math.ceil(g.boss.hp)), PX, by + bh * 1.35, clamp(PS * 0.42, 12, 20), '#fff', '#3a0a06', 4, FONT_JP);
     }
   }
   if (a.vn > 0 && G.state !== 'menu') {
@@ -974,9 +1195,12 @@ function render() {
   drawBackground();
   drawGround();
   drawWalls();
+  drawFork();
   const ents = [];
   for (const gt of w.gates) if (gt.z - cam.z < C.VIEW_DIST && gt.z - cam.z > -4) ents.push({ z: gt.z, k: 0, o: gt });
   for (const pk of w.picks) if (pk.z - cam.z < C.VIEW_DIST && pk.z - cam.z > -4) ents.push({ z: pk.z, k: 4, o: pk });
+  for (const c of w.coins) if (!c.got && c.z - cam.z < C.VIEW_DIST && c.z - cam.z > -2) ents.push({ z: c.z, k: 6, o: c });
+  if (w.fork && w.fork.z - 3 - cam.z < C.VIEW_DIST && w.fork.z - cam.z > -2) { ents.push({ z: w.fork.z - 3, k: 5, o: 0 }); ents.push({ z: w.fork.z - 3.01, k: 5, o: 1 }); }
   for (const g of w.groups) if (!g.dead && !g.skipped && g.z - cam.z < C.VIEW_DIST + 4) ents.push({ z: g.z, k: 1, o: g });
   ents.push({ z: a.z, k: 2, o: a });
   if (w.endZ - cam.z < C.VIEW_DIST + 4) ents.push({ z: w.endZ, k: 3, o: null });
@@ -986,11 +1210,28 @@ function render() {
     else if (e.k === 1) drawGroup(e.o);
     else if (e.k === 2) drawArmy();
     else if (e.k === 4) drawPickMarker(e.o);
+    else if (e.k === 5) drawRouteSign(w.fork, e.o);
+    else if (e.k === 6) drawCoinItem(e.o);
     else drawGoal(e.z);
   }
   drawProj();
   drawParts();
   drawLabels();
+  if (w.intro) {
+    const t = w.intro.t;
+    const al = t < 0.25 ? t / 0.25 : (t > 2.0 ? Math.max(0, (2.4 - t) / 0.4) : 1);
+    const th = BM.BOSS[w.intro.kind];
+    ctx.globalAlpha = al * 0.92;
+    const by = H * 0.22, bh = 96;
+    const gr = ctx.createLinearGradient(0, by, 0, by + bh);
+    gr.addColorStop(0, 'rgba(140,12,12,0)'); gr.addColorStop(0.2, 'rgba(140,12,12,0.9)'); gr.addColorStop(0.8, 'rgba(140,12,12,0.9)'); gr.addColorStop(1, 'rgba(140,12,12,0)');
+    ctx.fillStyle = gr; ctx.fillRect(0, by, W, bh);
+    ctx.globalAlpha = al;
+    const off = (1 - Math.min(1, t / 0.35)) * W * 0.5;
+    outlineText('⚠ BOSS 登場 ⚠', W / 2 - off, by + 30, 20, '#ffe14a', '#4a0a06', 5, FONT_JP);
+    outlineText(th.name, W / 2 + off, by + 64, Math.min(32, W / (th.name.length * 1.05)), '#ffffff', '#4a0a06', 6, FONT_JP);
+    ctx.globalAlpha = 1;
+  }
 }
 
 // ===================================================================== 入力
