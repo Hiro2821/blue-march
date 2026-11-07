@@ -48,7 +48,7 @@ function updateHud() {
   if (n !== hud.army) { hud.army = n; el.armyNum.textContent = BM.fmt(n); }
   if (w.stage !== hud.stage) { hud.stage = w.stage; el.stageNum.textContent = 'STAGE ' + w.stage; }
   if (S.coins !== hud.coins) { hud.coins = S.coins; el.coinNum.textContent = BM.fmt(S.coins); }
-  const pg = Math.round(BM.clamp(w.army.z / w.endZ, 0, 1) * 100);
+  const pg = Math.round(BM.clamp(w.army.z / w.goalZ, 0, 1) * 100);
   if (pg !== hud.prog) { hud.prog = pg; el.progFill.style.width = pg + '%'; }
   const a = w.army;
   const key = a.n.map((v) => Math.ceil(v - 1e-6)).join(',') + '|' + TYPES.map((t) => (S.unlock[t] ? 1 : 0)).join('');
@@ -65,13 +65,14 @@ function updateHud() {
   const run = G.run;
   if (run) {
     const b = run.buff;
-    const bk = [b.atk, b.hp, b.aspd, b.coin, b.move].join(',');
+    const bk = [b.atk, b.hp, b.aspd, b.coin, b.move, Math.ceil(w.invul || 0)].join(',');
     if (bk !== hud.buffs) {
       hud.buffs = bk;
       let h = '';
       for (const [k, ic] of [['atk', '⚔️'], ['hp', '🛡️'], ['aspd', '⚡'], ['coin', '🪙'], ['move', '👟']]) {
         if (b[k] > 0) h += '<span class="bchip">' + ic + '+' + Math.round(b[k] * 100) + '%</span>';
       }
+      if (w.invul > 0) h = '<span class="bchip inv">🛡 無敵 ' + Math.ceil(w.invul) + '秒</span>' + h;
       el.buffRow.innerHTML = h;
     }
   }

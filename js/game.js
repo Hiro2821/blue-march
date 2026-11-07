@@ -81,9 +81,46 @@ function applyOpt(a, o) {
   const tot = total(a);
   if (o.t === 'add') addProp(a, o.v);
   else if (o.t === 'sub') scaleArmy(a, Math.max(1, tot - o.v) / Math.max(tot, 1));
+  else if (o.t === 'div') scaleArmy(a, Math.max(1 / o.v, 1 / Math.max(tot, 1)));
   else if (o.t === 'mul') scaleArmy(a, Math.max(o.v, 1 / Math.max(tot, 1)));
   else if (o.t === 'type') a.n[TYPE[o.ty].idx] += o.v;
+  else if (o.t === 'conv') {            // 他の兵種の半数を指定の兵種に変更（人数は変わらない）
+    const k = TYPE[o.ty].idx;
+    const others = tot - a.n[k];
+    if (others > 0) {
+      const mv = others * o.v;
+      for (let i = 0; i < 4; i++) if (i !== k) a.n[i] *= 1 - o.v;
+      a.n[k] += mv;
+    }
+  }
+  const t2 = total(a);
+  if (t2 > BM.MAX_ARMY) scaleArmy(a, BM.MAX_ARMY / t2);   // 上限
   normalize(a);
+}
+// 敵兵士の追加: まだ戦っていない次の敵部隊に上乗せする
+function addEnemies(w, a, pct) {
+  let g = null;
+  for (const q of w.groups) if (!q.dead && !q.skipped && q.lane < 0 && q.z > a.z - 1) { g = q; break; }
+  if (!g) return 0;
+  const base = g.S + (g.boss ? g.boss.hp : 0);
+  const add = Math.max(g.k, Math.round(base * pct / 100));
+  g.S += add; g.S0 += add;
+  g.vn = Math.max(g.vn, BM.enemyVis(Math.ceil(g.S / g.k)));
+  g.depth0 = (Math.ceil(g.vn / g.cols) - 1) * C.ESPZ;
+  if (g.boss) w.endZ = Math.max(w.endZ, g.z + g.depth0 + 6);
+  addText(a.x, 3.4, a.z + 3, '敵 +' + BM.fmt(add), '#ff6a5e', 30, '#3a0a06');
+  return add;
+}
+// 数以外のパネル効果（強化・無敵・敵追加）
+function applyOptFx(w, a, run, o) {
+  if (o.t === 'buff') {
+    run.buff[o.key] += o.v;
+    addText(a.x, 3.4, a.z + 3, BM.BUFFS[o.key].ic + ' ' + BM.optText(o), '#d9c2ff', 28, '#2a1060');
+  } else if (o.t === 'invul') {
+    w.invul = BM.INVUL_SEC;
+    addText(a.x, 3.4, a.z + 3, '🛡 無敵！', '#bff3ff', 32, '#08405a');
+  } else if (o.t === 'enemy') addEnemies(w, a, o.v);
+  if (o.risk && o.risk.enemy) addEnemies(w, a, o.risk.enemy);
 }
 BM.applyOpt = applyOpt;
 
@@ -175,7 +212,7 @@ function newWorld(stage, state, seed) {
   };
   G.world = {
     stage, ...gen, army: a, parts: [], proj: [], acc: { arrow: 0, orb: 0, slash: 0 },
-    t: 0, readyT: 0.6, finishT: 0, dyingT: 0, glow: 0, shake: 0, fightT: 0, hintOn: false, intro: null,
+    t: 0, readyT: 0.6, finishT: 0, sprint: false, goalZ: gen.endZ, invul: 0, dyingT: 0, glow: 0, shake: 0, fightT: 0, hintOn: false, intro: null,
   };
   a.sp = spFor(count(a));
   syncArmy(a, 0);
@@ -276,6 +313,7 @@ function chooseRoute(w, lane) {
 
 // 敵の攻撃を兵種ごとの被弾しやすさ・体力に応じて配分する
 function hurtArmy(a, dE) {
+  if (G.world && G.world.invul > 0) return;
   let Wt = 0;
   for (const t of TYPES) Wt += a.n[TYPE[t].idx] * TYPE[t].w;
   if (Wt <= 0) return;
@@ -376,6 +414,8 @@ function update(dt) {
     if (w.readyT <= 0) G.state = 'playing';
   }
   w.glow = Math.max(0, w.glow - dt * 2.5);
+  w.goalZ += (w.endZ - w.goalZ) * Math.min(1, dt * 7);
+  if (w.invul > 0) w.invul = Math.max(0, w.invul - dt);
   for (const gt of w.gates) if (gt.flash > 0) gt.flash = Math.max(0, gt.flash - dt * 2);
 
   if (G.state === 'playing') {
@@ -385,12 +425,17 @@ function update(dt) {
       const gap0 = g.z - a.z;
       if (gap0 <= C.AGGRO) g.active = true;
       if (g.active && gap0 > C.CONTACT) g.z = Math.max(a.z + C.CONTACT, g.z - C.CHARGE * dt);
-      if (g.active && g.z - a.z <= reachRange(a)) fighting = true;
+      if (g.active && g.z - a.z <= reachRange(a)) {
+        // 目の前にパネルがあるときは、先にパネルを通過してから戦う
+        let gateAhead = false;
+        for (const gt of w.gates) if (!gt.used && gt.z > a.z && gt.z < g.z && gt.z - a.z < 12) { gateAhead = true; break; }
+        if (!gateAhead) fighting = true;
+      }
     }
     const atGoal = !g && a.z >= w.endZ - 1;
 
     if (!fighting && !atGoal) {
-      a.z += C.SPEED * moveM() * dt;
+      a.z += C.SPEED * moveM() * (w.sprint ? 1.9 : 1) * dt;
       if (a.z > 8) w.hintOn = false;
     }
 
@@ -414,12 +459,13 @@ function update(dt) {
       gt.side = side; gt.flash = 1;
       const before = count(a);
       applyOpt(a, opt);
+      applyOptFx(w, a, run, opt);
       const diff = count(a) - before;
       run.gates++;
       S.stats.gates++;
       w.glow = 1;
       const bad = BM.optBad(opt);
-      addText(a.x, 2.2, a.z, BM.optText(opt), bad ? '#ff6a5e' : '#ffe14a', 46, bad ? '#6a0f0a' : '#7a4a00');
+      addText(a.x, 2.2, a.z, (opt.t === 'buff' || opt.t === 'invul' || opt.t === 'enemy') ? '' : BM.optText(opt), bad ? '#ff6a5e' : '#ffe14a', 46, bad ? '#6a0f0a' : '#7a4a00');
       if (bad) {
         addRing(a.x, a.z, '#ff6a5e', 3.5);
         for (let k = 0; k < 4; k++) addPuff(a.x + (Math.random() - 0.5) * 4, a.z + (Math.random() - 0.5) * 2, '#ff9b90', 2);
@@ -455,7 +501,7 @@ function update(dt) {
 
     if (G.state === 'playing' && atGoal) {
       w.finishT += dt;
-      if (w.finishT > 0.5) winStage();
+      if (w.finishT > 0.3) winStage();
     }
   } else if (G.state === 'dying') {
     w.dyingT += dt;
@@ -558,7 +604,7 @@ function fight(w, a, g, dt) {
   if (bossAlive && gap <= 30) {
     g.boss.pulseT -= dt;
     if (g.boss.pulseT <= 0) {
-      g.boss.pulseT = 3.2;
+      g.boss.pulseT = 2.4;
       bossPulse(w, a, g);
     }
   }
@@ -593,7 +639,11 @@ function fight(w, a, g, dt) {
     const run = G.run;
     run.kills += g.S0;
     S.stats.kills += g.S0;
-    if (g.boss) { g.boss.hp = 0; run.bossKilled = true; S.stats.bossKills++; }
+    if (g.boss) {
+      g.boss.hp = 0; run.bossKilled = true; S.stats.bossKills++;
+      w.endZ = Math.min(w.endZ, a.z + 11);     // 撃破したらゴールはすぐ目の前
+      w.sprint = true;
+    }
     for (let k = 0; k < (g.boss ? 26 : 14); k++) {
       addPuff(g.x + (Math.random() - 0.5) * 9, g.z + Math.random() * Math.max(2, g.depth0), k & 1 ? '#ff8a7a' : '#fff0a0', 2);
     }
@@ -735,6 +785,12 @@ function drawWalls() {
   }
 }
 
+// 文字が maxW に収まるようにフォントサイズを縮める
+function fitW(str, size, maxW, font) {
+  ctx.font = '900 ' + Math.round(size) + 'px ' + (font || FONT_NUM);
+  const w = ctx.measureText(str).width;
+  return w > maxW ? size * maxW / w : size;
+}
 function outlineText(str, x, y, size, fill, stroke, lw, font) {
   ctx.font = '900 ' + Math.round(size) + 'px ' + (font || FONT_NUM);
   ctx.textAlign = 'center';
@@ -753,15 +809,24 @@ function pill(str, x, y, size, c1, c2) {
   const h = size * 1.35;
   const g = ctx.createLinearGradient(0, y - h / 2, 0, y + h / 2);
   g.addColorStop(0, c1); g.addColorStop(1, c2);
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowBlur = size * 0.3; ctx.shadowOffsetY = size * 0.12;
   BM.rrect(ctx, x - w / 2, y - h / 2, w, h, h / 2);
   ctx.fillStyle = g; ctx.fill();
-  ctx.lineWidth = 2.2; ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.stroke();
-  outlineText(str, x, y + size * 0.04, size, '#fff', 'rgba(0,0,0,0.45)', size * 0.16);
+  ctx.restore();
+  const gl = ctx.createLinearGradient(0, y - h / 2, 0, y);
+  gl.addColorStop(0, 'rgba(255,255,255,0.45)'); gl.addColorStop(1, 'rgba(255,255,255,0)');
+  BM.rrect(ctx, x - w / 2 + 2, y - h / 2 + 1.5, w - 4, h * 0.5, h / 4);
+  ctx.fillStyle = gl; ctx.fill();
+  BM.rrect(ctx, x - w / 2, y - h / 2, w, h, h / 2);
+  ctx.lineWidth = 2.4; ctx.strokeStyle = '#eef3ff'; ctx.stroke();
+  outlineText(str, x, y + size * 0.04, size, '#fff', 'rgba(5,12,30,0.65)', size * 0.18);
 }
 
 // ゲートの色
 function gateColors(o) {
   if (BM.optBad(o)) return ['#ff7a6e', '#c42a22', '#7a120e'];
+  if (BM.optSpecial(o)) return ['#c3a2ff', '#6a3fd0', '#ffd23f'];
   if (o.t === 'mul') return ['#7ad0ff', '#2a73f0', '#ffd23f'];
   if (o.t === 'type') {
     const c = TYPE[o.ty].col;
@@ -807,19 +872,34 @@ function drawGate(gt) {
     BM.rrect(ctx, X1 + wpx * 0.03, Yt + hpx * 0.06, wpx * 0.94, hpx * 0.28, hpx * 0.12);
     ctx.fill();
     const txt = BM.optText(opt);
-    let size = Math.min(hpx * 0.78, wpx / (txt.length * 0.62 + 0.6));
+    const sub = BM.optSub(opt);
+    const risky = !!(opt.risk && opt.risk.enemy);
+    const my = Yt + hpx * (sub ? 0.43 : 0.54);          // 数字の中心線
+    let size = Math.min(hpx * (sub ? 0.58 : 0.78), wpx / (txt.length * 0.62 + 0.6));
     let tx = (X1 + X2) / 2;
-    if (opt.t === 'type') {
+    if (opt.t === 'type' || opt.t === 'conv') {
       // 兵種アイコンを添える
       const spr = BM.art.spr[opt.ty];
       const ih = hpx * 0.78, iw = ih * 0.8;
-      size = Math.min(hpx * 0.62, (wpx - iw * 1.1) / (txt.length * 0.62 + 0.6));
+      size = Math.min(hpx * 0.5, (wpx - iw * 1.1) / (txt.length * 0.62 + 0.6));
       ctx.fillStyle = 'rgba(255,255,255,.85)';
-      ctx.beginPath(); ctx.arc(X1 + iw * 0.62, Yt + hpx * 0.54, ih * 0.5, 0, Math.PI * 2); ctx.fill();
-      ctx.drawImage(spr, X1 + iw * 0.12, Yt + hpx * 0.54 - ih * 0.5, iw, ih);
+      ctx.beginPath(); ctx.arc(X1 + iw * 0.62, Yt + hpx * 0.5, ih * 0.5, 0, Math.PI * 2); ctx.fill();
+      ctx.drawImage(spr, X1 + iw * 0.12, Yt + hpx * 0.5 - ih * 0.5, iw, ih);
       tx = X1 + iw * 1.2 + (wpx - iw * 1.2) / 2;
     }
-    outlineText(txt, tx, Yt + hpx * 0.54, size, '#fff', BM.optBad(opt) ? '#5a0d09' : '#0b3a8a', Math.max(3, size * 0.16));
+    const areaW = (opt.t === 'type' || opt.t === 'conv') ? (wpx - (hpx * 0.78 * 0.8) * 1.25) : wpx;
+    size = fitW(txt, size, areaW * 0.9);
+    const stk = BM.optBad(opt) ? '#5a0d09' : (BM.optSpecial(opt) ? '#2a1060' : '#0b3a8a');
+    outlineText(txt, tx, my, size, '#fff', stk, Math.max(3, size * 0.16));
+    if (sub) {
+      const ss = Math.max(7, fitW(sub, hpx * 0.17, areaW * 0.92));
+      outlineText(sub, tx, Yt + hpx * 0.8, ss, risky ? '#ffd9d4' : '#fff', risky ? '#7a120e' : stk, Math.max(2, ss * 0.2));
+    }
+    if (risky) {      // リスク付きは下端に赤い警告帯
+      ctx.fillStyle = 'rgba(214,40,30,.85)';
+      BM.rrect(ctx, X1 + wpx * 0.04, Yb - hpx * 0.07, wpx * 0.92, hpx * 0.05, hpx * 0.025);
+      ctx.fill();
+    }
     if (chosen && gt.flash > 0) {
       ctx.fillStyle = 'rgba(255,255,255,' + (gt.flash * 0.7).toFixed(3) + ')';
       BM.rrect(ctx, X1, Yt, wpx, hpx, Math.min(10, hpx * 0.18));
@@ -1024,6 +1104,12 @@ function drawArmy() {
     const rr = (Math.min(Math.sqrt(Math.max(n, 1)) * a.sp, 3.2) + 0.9) * PS;
     ctx.fillStyle = 'rgba(80,160,255,' + (0.16 + w.glow * 0.3).toFixed(3) + ')';
     ctx.beginPath(); ctx.ellipse(PX, PY - rr * 0.1, rr, rr * 0.55, 0, 0, Math.PI * 2); ctx.fill();
+    if (w.invul > 0) {     // 無敵中: 青白いバリア
+      const bl = w.invul < 1.5 ? (Math.sin(w.t * 24) > 0 ? 1 : 0.4) : 1;
+      ctx.fillStyle = 'rgba(150,235,255,' + (0.22 * bl).toFixed(3) + ')';
+      ctx.beginPath(); ctx.ellipse(PX, PY - rr * 0.35, rr * 1.12, rr * 0.8, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(210,250,255,' + (0.9 * bl).toFixed(3) + ')'; ctx.stroke();
+    }
   }
   const bobSpd = moving ? 11 : 5;
   const spr = BM.art.spr;
@@ -1169,15 +1255,27 @@ function drawLabels() {
     const size = clamp(PS * 0.62, 17, 30);
     if (cnt > 0) pill(BM.fmt(cnt), PX, PY, size, '#ff6a5e', '#c42a22');
     if (g.boss && g.boss.hp > 0) {
-      const bw = Math.max(56, PS * 4.2), bh = Math.max(9, PS * 0.5);
+      const bw = Math.max(70, PS * 5.2), bh = Math.max(12, PS * 0.62);
       const by = PY + (cnt > 0 ? size * 1.3 : 0) + bh;
-      BM.rrect(ctx, PX - bw / 2, by - bh / 2, bw, bh, bh / 2);
-      ctx.fillStyle = 'rgba(20,10,10,0.7)'; ctx.fill();
+      const bx = PX - bw / 2, bt = by - bh / 2;
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 3;
+      BM.rrect(ctx, bx - 3, bt - 3, bw + 6, bh + 6, (bh + 6) / 2);
+      ctx.fillStyle = '#0a1230'; ctx.fill();
+      ctx.restore();
       const fr = clamp(g.boss.hp / g.boss.max, 0, 1);
       if (fr > 0) {
-        BM.rrect(ctx, PX - bw / 2 + 2, by - bh / 2 + 2, Math.max(bh - 4, (bw - 4) * fr), bh - 4, (bh - 4) / 2);
-        ctx.fillStyle = '#ff4a3a'; ctx.fill();
+        const fw = Math.max(bh, bw * fr);
+        const gr = ctx.createLinearGradient(0, bt, 0, bt + bh);
+        gr.addColorStop(0, '#ff9a8c'); gr.addColorStop(0.45, '#ff3b2e'); gr.addColorStop(1, '#a3120b');
+        BM.rrect(ctx, bx, bt, fw, bh, bh / 2);
+        ctx.fillStyle = g.boss.hurt > 0 ? '#ffffff' : gr; ctx.fill();
+        BM.rrect(ctx, bx + 2, bt + 1.5, Math.max(0, fw - 4), bh * 0.35, bh / 6);
+        ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fill();
       }
+      for (let k = 1; k < 4; k++) { ctx.fillStyle = 'rgba(10,18,48,0.55)'; ctx.fillRect(bx + bw * k / 4 - 1, bt + 1, 2, bh - 2); }
+      BM.rrect(ctx, bx - 3, bt - 3, bw + 6, bh + 6, (bh + 6) / 2);
+      ctx.lineWidth = 2.5; ctx.strokeStyle = '#f2c14e'; ctx.stroke();
       outlineText(BM.BOSS[g.boss.kind].short + '  ' + BM.fmt(Math.ceil(g.boss.hp)), PX, by + bh * 1.35, clamp(PS * 0.42, 12, 20), '#fff', '#3a0a06', 4, FONT_JP);
     }
   }
@@ -1208,7 +1306,7 @@ function render() {
   if (w.fork && w.fork.z - 3 - cam.z < C.VIEW_DIST && w.fork.z - cam.z > -2) { ents.push({ z: w.fork.z - 3, k: 5, o: 0 }); ents.push({ z: w.fork.z - 3.01, k: 5, o: 1 }); }
   for (const g of w.groups) if (!g.dead && !g.skipped && g.z - cam.z < C.VIEW_DIST + 4) ents.push({ z: g.z, k: 1, o: g });
   ents.push({ z: a.z, k: 2, o: a });
-  if (w.endZ - cam.z < C.VIEW_DIST + 4) ents.push({ z: w.endZ, k: 3, o: null });
+  if (w.goalZ - cam.z < C.VIEW_DIST + 4) ents.push({ z: w.goalZ, k: 3, o: null });
   ents.sort((p, q) => q.z - p.z);
   for (const e of ents) {
     if (e.k === 0) drawGate(e.o);
