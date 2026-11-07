@@ -40,12 +40,27 @@ body { position: fixed; inset: 0; }
 #hud {
   position: absolute;
   top: 0; left: 0; right: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
   padding: calc(env(safe-area-inset-top, 0px) + 10px) 10px 0;
   pointer-events: none;
   z-index: 5;
+}
+#hudTop { display: flex; align-items: center; gap: 8px; }
+#typeRow { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.tchip {
+  display: flex; align-items: center; gap: 2px;
+  height: 30px; padding: 0 9px 0 2px;
+  border-radius: 999px;
+  background: rgba(10, 30, 70, 0.55);
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  font-weight: 900; font-size: 14px;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
+}
+.tchip img { width: 24px; height: 30px; object-fit: contain; margin-top: -2px; }
+.tchip.zero { opacity: 0.45; }
+#buffRow { display: flex; gap: 5px; margin-top: 6px; flex-wrap: wrap; }
+.bchip {
+  font-size: 11px; font-weight: 900; padding: 2px 7px; border-radius: 999px;
+  background: rgba(255, 214, 74, 0.92); color: #6a3d00; border: 1.5px solid #fff3b0;
 }
 
 .pill {
@@ -278,3 +293,39 @@ body { position: fixed; inset: 0; }
   border: 2px solid #ffd54a;
 }
 .tip { font-size: 13px; font-weight: 700; color: #52709f; }
+
+/* ---------- 兵士編成・強化選択 ---------- */
+.coinline { display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 900; font-size: 18px; color: #7a4a00; }
+.sect { font-size: 13px; font-weight: 900; color: #3c5a95; text-align: left; margin-bottom: -6px; }
+#roster { display: flex; flex-direction: column; gap: 8px; }
+.rcard {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+  border-radius: 14px; background: #fff; border: 2px solid #b7d3f7; text-align: left;
+}
+.rcard.locked { background: #eef2f8; border-style: dashed; }
+.rcard.locked img { filter: grayscale(1) brightness(.9); opacity: .6; }
+.rcard img { width: 40px; height: 50px; object-fit: contain; flex: none; }
+.rinfo { flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.rinfo b { font-size: 14px; }
+.rinfo b i { font-style: normal; font-size: 10px; margin-left: 6px; padding: 1px 6px; border-radius: 999px; background: #dfeeff; color: #1d5ccc; }
+.rinfo span { font-size: 10.5px; color: #52709f; font-weight: 700; line-height: 1.35; }
+.rstep { display: flex; align-items: center; gap: 4px; flex: none; }
+.rstep button {
+  width: 30px; height: 30px; border-radius: 10px; border: 2px solid #1d5ccc; background: #fff; color: #1d5ccc;
+  font-size: 16px; font-weight: 900; font-family: inherit; padding: 0;
+}
+.rstep button:active { background: #dfeeff; }
+.rstep em { font-style: normal; font-weight: 900; font-size: 13px; width: 38px; text-align: center; }
+.btn.sm { padding: 6px 10px; font-size: 14px; flex: none; }
+.banner.pickh { color: #f5a300; text-shadow: 0 3px 0 #a86100; font-size: 28px; }
+#pickList { display: flex; flex-direction: column; gap: 10px; }
+.pickcard {
+  display: flex; align-items: center; gap: 12px; padding: 12px; text-align: left;
+  border-radius: 16px; border: 3px solid #1d5ccc; background: linear-gradient(#fff, #e6f1ff);
+  box-shadow: 0 4px 0 #12408f; font-family: inherit; color: #17356e; cursor: pointer;
+}
+.pickcard:active { transform: translateY(3px); box-shadow: 0 1px 0 #12408f; }
+.pickcard .pi { font-size: 34px; width: 46px; text-align: center; flex: none; }
+.pickcard .pt { display: flex; flex-direction: column; gap: 2px; }
+.pickcard .pt b { font-size: 17px; }
+.pickcard .pt i { font-style: normal; font-size: 12px; font-weight: 700; color: #52709f; }

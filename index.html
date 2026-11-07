@@ -15,20 +15,21 @@
   <canvas id="c"></canvas>
 
   <div id="hud">
-    <div class="pill blue" id="hudArmy">
-      <svg class="ico" viewBox="0 0 32 32" aria-hidden="true">
-        <path d="M6 16a10 10 0 0 1 20 0v3H6z" fill="#2f7df0" stroke="#0e3a8c" stroke-width="2"/>
-        <rect x="4" y="17" width="24" height="4" rx="2" fill="#0e3a8c"/>
-        <path d="M11 11q3-5 8-3" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round" opacity=".7"/>
-        <rect x="12" y="21" width="8" height="6" rx="2" fill="#f1c9a0" stroke="#0e3a8c" stroke-width="1.5"/>
-      </svg>
-      <b id="armyNum">10</b>
+    <div id="hudTop">
+      <div class="pill blue" id="hudArmy">
+        <svg class="ico" viewBox="0 0 32 32" aria-hidden="true">
+          <path d="M6 16a10 10 0 0 1 20 0v3H6z" fill="#2f7df0" stroke="#0e3a8c" stroke-width="2"/>
+          <rect x="4" y="17" width="24" height="4" rx="2" fill="#0e3a8c"/>
+          <path d="M11 11q3-5 8-3" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round" opacity=".7"/>
+          <rect x="12" y="21" width="8" height="6" rx="2" fill="#f1c9a0" stroke="#0e3a8c" stroke-width="1.5"/>
+        </svg>
+        <b id="armyNum">10</b>
+      </div>
+      <div class="pill gold"><span class="coin"></span><b id="coinNum">0</b></div>
+      <div class="pill stg"><b id="stageNum">STAGE 1</b></div>
     </div>
-    <div class="pill gold">
-      <span class="coin"></span>
-      <b id="coinNum">0</b>
-    </div>
-    <div class="pill stg"><b id="stageNum">STAGE 1</b></div>
+    <div id="typeRow"></div>
+    <div id="buffRow"></div>
   </div>
 
   <div id="hint">◀ スワイプで左右に移動 ▶</div>
@@ -38,28 +39,29 @@
     <div class="panel">
       <div class="logo">ブルー<span>マーチ</span></div>
       <div class="sub">青い軍隊を育てて、赤い軍を打ち破れ！</div>
-
       <div class="stagesel">
         <button class="arrow" id="stPrev" aria-label="前のステージ">◀</button>
         <div class="stname" id="stName">ステージ 1</div>
         <button class="arrow" id="stNext" aria-label="次のステージ">▶</button>
       </div>
-
       <button class="btn green big" id="btnStart">スタート</button>
-
-      <div class="upgrade">
-        <div class="uptext">
-          <b>初期兵士を強化</b>
-          <span id="upInfo">兵士 10人 → 11人</span>
-        </div>
-        <button class="btn gold" id="btnUpgrade"><span class="coin"></span><span id="upCost">40</span></button>
-      </div>
-
+      <div class="coinline"><span class="coin"></span><b id="titleCoins">0</b></div>
+      <div class="sect">兵士の編成</div>
+      <div id="roster"></div>
       <ul class="howto">
-        <li>画面を左右にスワイプして軍隊を動かす</li>
-        <li>青いゲートをくぐって兵士を増やす</li>
-        <li>敵軍を全滅させてゴールを目指そう</li>
+        <li>左右にスワイプして通るゲートを選ぶ</li>
+        <li>ゲートは足し算・掛け算・マイナスもある</li>
+        <li>途中の★強化は3つから1つ選ぼう</li>
       </ul>
+    </div>
+  </div>
+
+  <!-- 強化選択 -->
+  <div class="overlay hidden" id="pick">
+    <div class="panel">
+      <div class="banner pickh">強化を選ぼう！</div>
+      <div class="tip">このステージの間だけ有効です</div>
+      <div id="pickList"></div>
     </div>
   </div>
 
@@ -70,6 +72,7 @@
       <div class="result">
         <div>残った兵士 <b id="clArmy">0</b> 人</div>
         <div class="reward"><span class="coin"></span> 報酬 <b id="clReward">0</b></div>
+        <div class="tip" id="clDetail"></div>
       </div>
       <button class="btn green big" id="btnNext">つぎのステージへ</button>
       <button class="btn plain" id="btnReplay">もう一度あそぶ</button>
@@ -83,13 +86,19 @@
       <div class="banner lose">全滅…</div>
       <div class="result">
         <div id="ovStage">ステージ 1</div>
-        <div class="tip">ゲートは数字の大きいほうを選ぼう！</div>
+        <div class="tip">赤いゲートは避けて、兵士を増やそう！</div>
       </div>
       <button class="btn green big" id="btnRetry">リトライ</button>
       <button class="btn plain" id="btnOverTitle">タイトルへ</button>
     </div>
   </div>
 </div>
-<script src="game.js"></script>
+<script src="js/data.js"></script>
+<script src="js/save.js"></script>
+<script src="js/art.js"></script>
+<script src="js/boss.js"></script>
+<script src="js/stage.js"></script>
+<script src="js/game.js"></script>
+<script src="js/ui.js"></script>
 </body>
 </html>
