@@ -14,6 +14,7 @@
 <div id="stage">
   <canvas id="c"></canvas>
 
+  <!-- ゲーム中のHUD -->
   <div id="hud">
     <div id="hudTop">
       <div class="pill blue" id="hudArmy">
@@ -32,29 +33,25 @@
     <div id="typeRow"></div>
     <div id="buffRow"></div>
   </div>
-
+  <button id="btnPause" class="hidden" aria-label="一時停止">❚❚</button>
   <div id="hint">◀ スワイプで左右に移動 ▶</div>
+  <div id="toast"></div>
 
-  <!-- タイトル -->
-  <div class="overlay" id="title">
-    <div class="panel">
-      <div class="logo">ブルー<span>マーチ</span></div>
-      <div class="sub">青い軍隊を育てて、赤い軍を打ち破れ！</div>
-      <div class="stagesel">
-        <button class="arrow" id="stPrev" aria-label="前のステージ">◀</button>
-        <div class="stname" id="stName">ステージ 1</div>
-        <button class="arrow" id="stNext" aria-label="次のステージ">▶</button>
-      </div>
-      <button class="btn green big" id="btnStart">スタート</button>
-      <div class="coinline"><span class="coin"></span><b id="titleCoins">0</b></div>
-      <div class="sect">兵士の編成</div>
-      <div id="roster"></div>
-      <ul class="howto">
-        <li>左右にスワイプして通るゲートを選ぶ</li>
-        <li>ゲートは足し算・掛け算・マイナスもある</li>
-        <li>途中の★強化は3つから1つ選ぼう</li>
-      </ul>
-    </div>
+  <!-- メニュー（ホーム・ステージ・兵士・強化・ミッション・実績） -->
+  <div id="menu" class="hidden">
+    <header id="mhead">
+      <div class="pill gold"><span class="coin"></span><b id="mCoin">0</b></div>
+      <div id="mtitle">ホーム</div>
+    </header>
+    <main id="mbody"></main>
+    <nav id="tabs">
+      <button data-tab="home"><i>🏠</i><span>ホーム</span></button>
+      <button data-tab="stages"><i>🗺️</i><span>ステージ</span></button>
+      <button data-tab="soldiers"><i>🛡️</i><span>兵士</span></button>
+      <button data-tab="upgrade"><i>🔨</i><span>強化</span></button>
+      <button data-tab="missions"><i>📋</i><span>ミッション</span></button>
+      <button data-tab="records"><i>🏅</i><span>実績</span></button>
+    </nav>
   </div>
 
   <!-- 強化選択 -->
@@ -72,12 +69,13 @@
       <div class="banner win">ステージクリア！</div>
       <div class="result">
         <div>残った兵士 <b id="clArmy">0</b> 人</div>
-        <div class="reward"><span class="coin"></span> 報酬 <b id="clReward">0</b></div>
+        <div id="clRows" class="rows"></div>
+        <div class="reward"><span class="coin"></span> 合計 <b id="clReward">0</b></div>
         <div class="tip" id="clDetail"></div>
       </div>
       <button class="btn green big" id="btnNext">つぎのステージへ</button>
       <button class="btn plain" id="btnReplay">もう一度あそぶ</button>
-      <button class="btn plain" id="btnClearTitle">タイトルへ</button>
+      <button class="btn plain" id="btnClearHome">ホームへ</button>
     </div>
   </div>
 
@@ -87,10 +85,35 @@
       <div class="banner lose">全滅…</div>
       <div class="result">
         <div id="ovStage">ステージ 1</div>
-        <div class="tip">赤いゲートは避けて、兵士を増やそう！</div>
+        <div class="reward" id="ovReward"><span class="coin"></span> 参加報酬 <b id="ovCoins">0</b></div>
+        <div class="tip">コインで兵士を強化すれば、きっと突破できる！</div>
       </div>
       <button class="btn green big" id="btnRetry">リトライ</button>
-      <button class="btn plain" id="btnOverTitle">タイトルへ</button>
+      <button class="btn gold wide" id="btnToUpgrade">🔨 兵士を強化する</button>
+      <button class="btn plain" id="btnOverHome">ホームへ</button>
+    </div>
+  </div>
+
+  <!-- 放置報酬 -->
+  <div class="overlay hidden" id="idle">
+    <div class="panel">
+      <div class="banner pickh">おかえりなさい！</div>
+      <div class="result">
+        <div id="idTime">経過 0分</div>
+        <div class="reward"><span class="coin"></span> 放置報酬 <b id="idCoins">0</b></div>
+        <div class="tip" id="idNote"></div>
+      </div>
+      <button class="btn green big" id="btnIdleClaim">受け取る</button>
+    </div>
+  </div>
+
+  <!-- 一時停止 -->
+  <div class="overlay hidden" id="pause">
+    <div class="panel">
+      <div class="banner pickh">一時停止</div>
+      <button class="btn green big" id="btnResume">つづける</button>
+      <button class="btn plain" id="btnQuit">あきらめてホームへ</button>
+      <div class="tip">あきらめると、このステージのコインは手に入りません</div>
     </div>
   </div>
 </div>
@@ -100,6 +123,7 @@
 <script src="js/boss.js"></script>
 <script src="js/stage.js"></script>
 <script src="js/game.js"></script>
+<script src="js/meta.js"></script>
 <script src="js/ui.js"></script>
 </body>
 </html>

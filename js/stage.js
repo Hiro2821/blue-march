@@ -83,7 +83,7 @@ function makeRow(A, stage, rnd, avail) {
 }
 
 // 難易度: 最後に待つ敵の強さ（最良ルートで進んだ場合の兵数に対する比率）
-BM.finalRatio = (stage) => 0.7 + 0.1 * stage;
+BM.finalRatio = (stage) => (stage <= 4 ? 0.7 + 0.12 * stage : 1.18 * Math.pow(1.13, stage - 4));
 
 
 // ---- 分岐ルート: 左右の道で得られるものが違う
@@ -160,7 +160,7 @@ BM.genStage = function (stage, seed) {
     if (pickAfter.has(i)) picks.push({ z: lastGateZ + 8, used: false, kind: 'stage' });
     if (midAfter.has(i)) {
       const gz = lastGateZ + 32;
-      const r = Math.min(0.3 + 0.04 * stage, 1.0);
+      const r = 0.45 * BM.finalRatio(stage);
       const E = Math.max(4, Math.round(A * r));
       const g = makeGroup(gz, E, rnd);
       groups.push(g);

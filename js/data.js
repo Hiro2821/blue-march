@@ -16,6 +16,9 @@ BM.C = {
   ESPX: 0.82, ESPZ: 0.62, ECOLS: 13,
 };
 
+// 恒久強化の1レベルあたりの効果
+BM.UPGV = { atk: 0.06, hp: 0.06, aspd: 0.04, coin: 0.08 };
+
 // ---------------------------------------------------------------- 兵種
 BM.TYPES = ['sword', 'archer', 'heavy', 'mage'];
 BM.TYPE = {
@@ -78,6 +81,10 @@ BM.fmt = function (n) {
   if (n < 1e9) return (n / 1e6).toFixed(n < 1e7 ? 2 : 1).replace(/\.?0+$/, '') + 'M';
   return (n / 1e9).toFixed(1) + 'B';
 };
+
+// ステージ報酬（クリア時）: 基本報酬とボス撃破ボーナス
+BM.stageBase = (s) => Math.round(50 + 20 * s + 1.2 * s * s);
+BM.stageBoss = (s) => Math.round(BM.stageBase(s) * 0.7);
 
 BM.clamp = (v, a, b) => (v < a ? a : (v > b ? b : v));
 BM.lerp = (a, b, t) => a + (b - a) * t;

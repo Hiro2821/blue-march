@@ -20,6 +20,7 @@ function defaults() {
       totalCoins: 0, bossKills: 0, clears: 0, plays: 0, losses: 0,
       maxArmy: 0, bestClearArmy: 0, maxStage: 1, gates: 0, picks: 0,
       routes: { army: 0, coin: 0, elite: 0 }, kills: 0,
+      perfect: 0, comeback: 0, idleClaims: 0,
     },
     idleStart: now,                               // 放置報酬の起点
     lastSeen: now,

@@ -154,10 +154,10 @@ function syncArmy(a, dt) {
 
 // ===================================================================== 倍率
 function runBuff() { return G.run ? G.run.buff : { atk: 0, hp: 0, aspd: 0, coin: 0, move: 0 }; }
-const atkM = () => (1 + 0.06 * S.upg.atk) * (1 + runBuff().atk);
-const hpM = () => (1 + 0.06 * S.upg.hp) * (1 + runBuff().hp);
-const aspdM = () => (1 + 0.04 * S.upg.aspd) * (1 + runBuff().aspd);
-const coinM = () => (1 + 0.08 * S.upg.coin) * (1 + runBuff().coin);
+const atkM = () => (1 + BM.UPGV.atk * S.upg.atk) * (1 + runBuff().atk);
+const hpM = () => (1 + BM.UPGV.hp * S.upg.hp) * (1 + runBuff().hp);
+const aspdM = () => (1 + BM.UPGV.aspd * S.upg.aspd) * (1 + runBuff().aspd);
+const coinM = () => (1 + BM.UPGV.coin * S.upg.coin) * (1 + runBuff().coin);
 const moveM = () => 1 + runBuff().move;
 BM.mult = { atk: atkM, hp: hpM, aspd: aspdM, coin: coinM, move: moveM };
 
@@ -324,8 +324,8 @@ function winStage() {
   const w = G.world, a = w.army, run = G.run;
   G.state = 'clear';
   const left = Math.max(1, count(a));
-  const base = 30 + w.stage * 15;
-  const bossBonus = 60 + w.stage * 25;
+  const base = BM.stageBase(w.stage);
+  const bossBonus = BM.stageBoss(w.stage);
   const reward = Math.round((base + bossBonus + run.coinsRaw) * coinM());
   const first = w.stage >= S.stage;
   S.coins += reward;
@@ -336,14 +336,19 @@ function winStage() {
   S.stats.maxStage = Math.max(S.stats.maxStage, S.stage);
   BM.hooks.event('clear', { stage: w.stage, left });
   BM.writeSave();
-  BM.hooks.clear({ stage: w.stage, left, reward, first, base, bossBonus, coins: Math.round(run.coinsRaw * coinM()), bossKind: w.bossKind });
+  BM.hooks.clear({ stage: w.stage, left, reward, first, base, bossBonus, routeCoins: run.coinsRaw, mult: coinM(), bossKind: w.bossKind });
 }
 function loseStage() {
   G.state = 'over';
+  const w = G.world, run = G.run;
+  // 負けても少しコインがもらえる（集めたコインは半分）
+  const coins = Math.round((BM.stageBase(w.stage) * 0.25 + run.coinsRaw * 0.5) * coinM());
+  S.coins += coins;
+  S.stats.totalCoins += coins;
   S.stats.losses++;
-  BM.hooks.event('lose', { stage: G.world.stage });
+  BM.hooks.event('lose', { stage: w.stage });
   BM.writeSave();
-  BM.hooks.over({ stage: G.world.stage });
+  BM.hooks.over({ stage: w.stage, coins });
 }
 
 function update(dt) {
@@ -1189,7 +1194,7 @@ function render() {
   const w = G.world, a = w.army;
   cam.z = a.z - C.CAM_BACK;
   cam.x = a.x * 0.35;
-  if (G.state === 'menu') cam.x = Math.sin(w.t * 0.5) * 0.6;
+  if (G.state === 'menu') { cam.x = Math.sin(w.t * 0.5) * 0.6; cam.z -= 12; }   // ホーム画面では軍隊を画面の上寄りに見せる
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (w.shake > 0) ctx.translate((Math.random() - 0.5) * w.shake * 14, (Math.random() - 0.5) * w.shake * 14);
   drawBackground();
@@ -1264,6 +1269,7 @@ G.frame = function (ts) {
   let dt = (ts - last) / 1000;
   last = ts;
   if (!(dt > 0)) dt = 0.016;
+  if (G.hold) return;                                     // メニュー画面で隠れている間は描画しない
   if (G.state === 'picking' || G.paused) { render(); return; }
   G.step(Math.min(0.05, dt));
   BM.hooks.frame && BM.hooks.frame();

@@ -252,6 +252,15 @@ BM.art = {
       sword: spriteSword(), archer: spriteArcher(), heavy: spriteHeavy(), mage: spriteMage(),
       red: spriteRed(false), elite: spriteRed(true),
     };
+    // ステージ一覧用のボスアイコン
+    this.boss = [];
+    for (let k = 0; k < BM.BOSS.length; k++) {
+      const [c, g] = canvas(120, 136);
+      BM.drawBoss(g, k, 60, 128, 92, 0, 0);
+      let u = '';
+      try { u = c.toDataURL('image/png'); } catch (e) { /* ignore */ }
+      this.boss.push(u);
+    }
     // UI用アイコン（DataURL）
     for (const k of Object.keys(this.spr)) {
       try { this.icons[k] = this.spr[k].toDataURL('image/png'); } catch (e) { this.icons[k] = ''; }
